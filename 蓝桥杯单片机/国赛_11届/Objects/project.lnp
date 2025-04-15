@@ -1,0 +1,8 @@
+".\Objects\main.obj",
+".\Objects\configure.obj",
+".\Objects\ds1302.obj",
+".\Objects\onewire.obj",
+".\Objects\iic.obj" 
+TO ".\Objects\project" 
+PRINT(".\Listings\project.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 

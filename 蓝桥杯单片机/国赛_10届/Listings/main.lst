@@ -1,0 +1,488 @@
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.
+                    -lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "configure.h"
+   3          #include "onewire.h"
+   4          #include "iic.h"
+   5          #include "stdio.h"
+   6          //****************************
+   7          sbit tx = P1^0;
+   8          sbit rx = P1^1;
+   9          u8 temp_down_t = 0;
+  10          u8 smg_down_t = 0;
+  11          u8 csb_down_t = 0;
+  12          u8 key_down_t = 0;
+  13          u8 stoc_down_t = 0;
+  14          u8 key_val,key_old,key_down,key_up;
+  15          u8 mode=1,modepro=1;
+  16          //-----
+  17          u16 temp;
+  18          float Temp_t;
+  19          u16 distance;
+  20          u16 bian_cnt = 0;
+  21          u8 temp_para_t = 30,temp_para = 30;
+  22          u8 dist_para_t = 35,dist_para = 35;
+  23          u8 led_state=0xff;
+  24          //----
+  25          u8 rx_cnt=0;
+  26          xdata u8 rx_buff[12];
+  27          xdata u8 tx_buff[12];
+  28          //-----
+  29          bit dac_output=1;//1为启动
+  30          bit long_an=0;
+  31          bit flag1s=0;
+  32          u16 time1s;
+  33          //-----
+  34          u8 sys_cli=0;//如果为1，10ms计时
+  35          u8 uar_10ms=0;//接收中断、串口处理清0，超过10ms没接收数据 即处理指令
+  36          //***********Init*****************
+  37          void delay(u16 a)
+  38          {
+  39   1              while(a--);
+  40   1      }
+  41          void sendbyte(u8 Data)
+  42          {
+  43   1              SBUF = Data;
+  44   1              while(TI==0);
+  45   1              TI = 0;
+  46   1      }
+  47          void send_string(char* str)
+  48          {
+  49   1              while(*str != '\0')
+  50   1              {
+  51   2                      sendbyte(*str++);
+  52   2              }
+  53   1      }
+  54          u8 key_read()
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 2   
+
+  55          {
+  56   1              u8 temp=0;
+  57   1              ET0 = 0;
+  58   1              P35=0;P34=1;
+  59   1              if(P32 == 0)    temp = 13;
+  60   1              if(P33 == 0)    temp = 12;
+  61   1              P35=1;P34=0;
+  62   1              if(P32 == 0)    temp = 17;
+  63   1              if(P33 == 0)    temp = 16;
+  64   1              ET0 = 1;
+  65   1              return temp;
+  66   1      }
+  67          void sendwave()
+  68          {
+  69   1              u8 i;
+  70   1              for ( i=0; i<8; i++)
+  71   1              {
+  72   2                      tx = 0;
+  73   2                      Delay14us();
+  74   2                      tx = 1;
+  75   2                      Delay14us();
+  76   2              }
+  77   1      }
+  78          void ds18b20_init()
+  79          {
+  80   1              u8 i;
+  81   1              init_ds18b20();
+  82   1              Write_DS18B20(0xcc);
+  83   1              Write_DS18B20(0x44);
+  84   1              for ( i=0; i<8; i++ )
+  85   1              {
+  86   2                      delay(60000);
+  87   2              }
+  88   1      }
+  89          //+++++++++++Work+++++++++++
+  90          //**************************
+  91          void uart_work()
+  92          {
+  93   1              u8 i=0;
+  94   1              if(!rx_cnt)             return;
+  95   1              if(uar_10ms>=10)
+  96   1              {
+  97   2                      sys_cli = 0;
+  98   2                      uar_10ms = 0;
+  99   2                      if(rx_buff[0]=='S' && rx_buff[1]=='T')
+ 100   2                      {
+ 101   3                              sprintf(tx_buff,"$%2d,%4.2f\r\n",distance,Temp_t);
+ 102   3                      }else if(rx_buff[0]=='P' && rx_buff[1]=='A' && rx_buff[2]=='R' && rx_buff[3]=='A'){
+ 103   3                              sprintf(tx_buff,"#%d,%d\r\n",(int)dist_para_t,(int)temp_para_t);
+ 104   3                      }else{
+ 105   3                              sprintf(tx_buff,"ERROR\r\n");
+ 106   3                      }
+ 107   2                      send_string(tx_buff);
+ 108   2                      for(i=0; i<rx_cnt; i++)
+ 109   2                      {
+ 110   3                              rx_buff[i] = 0;
+ 111   3                              tx_buff[i] = 0;
+ 112   3                      }
+ 113   2                      rx_cnt = 0;
+ 114   2              }
+ 115   1      
+ 116   1              
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 3   
+
+ 117   1      }
+ 118          void led_work()
+ 119          {
+ 120   1              if(temp>temp_para_t*100)
+ 121   1              {
+ 122   2                      led_state &= 0xfe;
+ 123   2              }else{
+ 124   2                      led_state |=~0xfe;
+ 125   2              }
+ 126   1              if(distance<dist_para_t)
+ 127   1              {
+ 128   2                      led_state &= 0xfd;
+ 129   2              }else{
+ 130   2                      led_state |=~0xfd;
+ 131   2              }
+ 132   1              if(dac_output)
+ 133   1              {
+ 134   2                      led_state &= 0xfb;
+ 135   2              }else{
+ 136   2                      led_state |=~0xfb;
+ 137   2              }
+ 138   1              HC138_Init(4,led_state);
+ 139   1      }
+ 140          void dac_ouput()
+ 141          {
+ 142   1              u8 Data;
+ 143   1              if(dac_output)
+ 144   1              {
+ 145   2                      if(distance<=dist_para_t)
+ 146   2                      {
+ 147   3                              Data = 102;
+ 148   3                      }else{
+ 149   3                              Data = 204;
+ 150   3                      }
+ 151   2                      DA_Output(Data);
+ 152   2              }else{
+ 153   2                      DA_Output(20.4);
+ 154   2              }
+ 155   1      }
+ 156          void write_stock()
+ 157          {
+ 158   1              u8 high,low;
+ 159   1              if(stoc_down_t)  return;
+ 160   1              stoc_down_t = 1;
+ 161   1              if(mode==1)
+ 162   1              {
+ 163   2                      if((temp_para_t!=temp_para)||(dist_para_t!=dist_para)) 
+ 164   2                      {
+ 165   3                              temp_para_t = temp_para;
+ 166   3                              dist_para_t = dist_para;
+ 167   3                              bian_cnt++;
+ 168   3                              high = (u8)(bian_cnt>>8);
+ 169   3                              low  = (u8)bian_cnt;
+ 170   3                              at24c02_write(0x01,high);
+ 171   3                              at24c02_write(0x00,low);
+ 172   3                              Delay5ms();     
+ 173   3                      }
+ 174   2              }
+ 175   1      }
+ 176          void dist_read()
+ 177          {
+ 178   1              u16 time;
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 4   
+
+ 179   1              CMOD = 0x00;
+ 180   1              CH = CL = 0;
+ 181   1              EA = 0;
+ 182   1              sendwave();
+ 183   1              EA = 1; CR=1;
+ 184   1              while (rx && !CF);
+ 185   1              CR = 0;
+ 186   1              if (CF == 0)
+ 187   1              {
+ 188   2                      time = CH;
+ 189   2                      time = (time<<8)|CL;
+ 190   2                      distance = time*0.017;
+ 191   2                      if(distance>99)         distance=99;
+ 192   2              }else{
+ 193   2                      CF = 0;
+ 194   2                      distance = 99;
+ 195   2              }
+ 196   1      }
+ 197          void ds18b20_read()
+ 198          {
+ 199   1              u8 MSB,LSB;
+ 200   1              u16 Data;
+ 201   1              if(temp_down_t)         return;
+ 202   1              temp_down_t = 1;
+ 203   1              init_ds18b20();
+ 204   1              Write_DS18B20(0xcc);
+ 205   1              Write_DS18B20(0x44);
+ 206   1              init_ds18b20();
+ 207   1              Write_DS18B20(0xcc);
+ 208   1              Write_DS18B20(0xbe);
+ 209   1              LSB = Read_DS18B20();
+ 210   1              MSB = Read_DS18B20();
+ 211   1              Data = MSB;
+ 212   1              Data = (Data<<8)|LSB;
+ 213   1              if((Data&0xf800) == 0x00)
+ 214   1              {
+ 215   2                      Temp_t = Data*0.0625;
+ 216   2                      temp = Temp_t*100;
+ 217   2              }
+ 218   1      }
+ 219          void key_work()
+ 220          {
+ 221   1              u8 high,low;
+ 222   1              if(key_down_t)  return;
+ 223   1              key_down_t = 1;
+ 224   1              key_val = key_read();
+ 225   1              key_down = key_val&(key_val^key_old);
+ 226   1              key_up  = ~key_val&(key_val^key_old);
+ 227   1              key_old = key_val;
+ 228   1      
+ 229   1              if(key_down == 13)
+ 230   1              {
+ 231   2                      long_an = 1;
+ 232   2              }
+ 233   1              if(key_up == 13)
+ 234   1              {
+ 235   2                      long_an = 0;
+ 236   2                      time1s = 0;
+ 237   2                      if(!flag1s)
+ 238   2                      {
+ 239   3                              if(++mode==3)   mode=1;
+ 240   3                              modepro = 1;
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 5   
+
+ 241   3                      }
+ 242   2                      if(flag1s)
+ 243   2                      {
+ 244   3                              flag1s = 0;
+ 245   3                              if(dac_output)  dac_output=0;else dac_output=1;
+ 246   3                      }
+ 247   2              }
+ 248   1              if(key_down == 12)
+ 249   1              {
+ 250   2                      long_an = 1;
+ 251   2              }
+ 252   1              if(key_up == 12)
+ 253   1              {
+ 254   2                      long_an = 0;
+ 255   2                      time1s = 0;
+ 256   2                      if(!flag1s)
+ 257   2                      {
+ 258   3                              if(mode==1)
+ 259   3                              {
+ 260   4                                      if(++modepro==4)        modepro=1;
+ 261   4                              }
+ 262   3                              if(mode==2)
+ 263   3                              {
+ 264   4                                      if(++modepro==3)        modepro=1;
+ 265   4                              }
+ 266   3                      }
+ 267   2                      if(flag1s)
+ 268   2                      {
+ 269   3                              flag1s = 0;
+ 270   3                              bian_cnt = 0;
+ 271   3                              
+ 272   3                              high = (u8)(bian_cnt>>8);
+ 273   3                              low  = (u8)bian_cnt;
+ 274   3                              at24c02_write(0x01,high);
+ 275   3                              at24c02_write(0x00,low);
+ 276   3                              Delay5ms();     
+ 277   3                      }
+ 278   2              }
+ 279   1              
+ 280   1              if(key_down == 16)      //减
+ 281   1              {
+ 282   2                      if(mode==2)
+ 283   2                      {
+ 284   3                              if(modepro==1)
+ 285   3                              {
+ 286   4                                      if(temp_para>=2)        temp_para -= 2;else temp_para = 0;
+ 287   4                              }
+ 288   3                              if(modepro==2)
+ 289   3                              {
+ 290   4                                      if(dist_para>=5)        dist_para -= 5;else dist_para = 0;
+ 291   4                              }
+ 292   3                      }
+ 293   2              }
+ 294   1              if(key_down == 17)
+ 295   1              {
+ 296   2                      if(mode==2)
+ 297   2                      {
+ 298   3                              if(modepro==1)
+ 299   3                              {
+ 300   4                                      if(temp_para<=97)       temp_para += 2;else temp_para = 99;
+ 301   4                              }
+ 302   3                              if(modepro==2)
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 6   
+
+ 303   3                              {
+ 304   4                                      if(dist_para<=94)  dist_para += 5;else dist_para = 99;
+ 305   4                              }
+ 306   3                      }
+ 307   2              }
+ 308   1      }
+ 309          void smg_work()
+ 310          {
+ 311   1              static u8 dac=0;
+ 312   1              if(smg_down_t)  return;
+ 313   1              smg_down_t = 1;
+ 314   1              //******
+ 315   1              
+ 316   1              if(++csb_down_t == 25)
+ 317   1              {
+ 318   2                      csb_down_t = 0;
+ 319   2                      dist_read();
+ 320   2              }
+ 321   1              if(++dac==5)
+ 322   1              {
+ 323   2                      dac = 0;
+ 324   2                      dac_ouput();
+ 325   2              }
+ 326   1              //******
+ 327   1              if(mode == 1)           //数据界面
+ 328   1              {
+ 329   2                      if(modepro == 1)        //温度
+ 330   2                      {
+ 331   3                              smg_data[0] = 0xc6; smg_data[1] = 0xff;
+ 332   3                              smg_data[2] = 0xff; smg_data[3] = 0xff;
+ 333   3                              smg_data[4] = SMG_NoDot[temp/1000];
+ 334   3                              smg_data[5] = SMG_Dot[temp/100%10];
+ 335   3                              smg_data[6] = SMG_NoDot[temp/10%10];
+ 336   3                              smg_data[7] = SMG_NoDot[temp%10];
+ 337   3                      }
+ 338   2                      if(modepro == 2)        //距离
+ 339   2                      {
+ 340   3                              smg_data[0] = 0xc7; smg_data[1] = 0xff;
+ 341   3                              smg_data[2] = 0xff; smg_data[3] = 0xff;
+ 342   3                              smg_data[4] = 0Xff; smg_data[5] = 0xff;
+ 343   3                              smg_data[6] = SMG_NoDot[distance/10];
+ 344   3                              smg_data[7] = SMG_NoDot[distance%10];
+ 345   3                      }
+ 346   2                      if( modepro == 3)       //变更次数
+ 347   2                      {
+ 348   3                              smg_data[0] = 0xc8; smg_data[1] = 0xff;
+ 349   3                              smg_data[2] = 0xff;
+ 350   3                              if(bian_cnt>9999)       smg_data[3] = SMG_NoDot[bian_cnt/10000];else smg_data[3] = 0xff;
+ 351   3                              if(bian_cnt>999)        smg_data[4] = SMG_NoDot[bian_cnt/1000%10];else smg_data[4] = 0xff;
+ 352   3                              if(bian_cnt>99)         smg_data[5] = SMG_NoDot[bian_cnt/100%10];else smg_data[5] = 0xff;
+ 353   3                              if(bian_cnt>9)          smg_data[6] = SMG_NoDot[bian_cnt/10%10];else smg_data[6] = 0xff;
+ 354   3                              smg_data[7] = SMG_NoDot[bian_cnt%10];
+ 355   3                      }
+ 356   2              }
+ 357   1              if(mode == 2)           //参数界面
+ 358   1              {
+ 359   2                      if(modepro == 1)        //温度参数
+ 360   2                      {
+ 361   3                              smg_data[0] = 0x8c; smg_data[1] = 0xff;
+ 362   3                              smg_data[2] = 0xff; smg_data[4] = 0xff;
+ 363   3                              smg_data[5] = 0xff;
+ 364   3                              smg_data[3] = SMG_NoDot[modepro];
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 7   
+
+ 365   3                              smg_data[6] = SMG_NoDot[temp_para/10];
+ 366   3                              smg_data[7] = SMG_NoDot[temp_para%10];
+ 367   3                      }
+ 368   2                      if(modepro == 2)        //距离参数
+ 369   2                      {
+ 370   3                              smg_data[0] = 0x8c; smg_data[1] = 0xff;
+ 371   3                              smg_data[2] = 0xff; smg_data[4] = 0xff;
+ 372   3                              smg_data[5] = 0xff;
+ 373   3                              smg_data[3] = SMG_NoDot[modepro];
+ 374   3                              smg_data[6] = SMG_NoDot[dist_para/10];
+ 375   3                              smg_data[7] = SMG_NoDot[dist_para%10];
+ 376   3                      }
+ 377   2              }
+ 378   1      }
+ 379          void Timer0Init(void)           //1毫秒@12.000MHz
+ 380          {
+ 381   1              AUXR &= 0x7F;           //定时器时钟12T模式
+ 382   1              TMOD &= 0xF0;           //设置定时器模式
+ 383   1              TL0 = 0x18;             //设置定时初值
+ 384   1              TH0 = 0xFC;             //设置定时初值
+ 385   1              TF0 = 0;                //清除TF0标志
+ 386   1              TR0 = 1;                //定时器0开始计时
+ 387   1              ET0 = 1;
+ 388   1              EA  = 1;
+ 389   1      }
+ 390          void UartInit(void)             //4800bps@12.000MHz
+ 391          {
+ 392   1              SCON = 0x50;            //8位数据,可变波特率
+ 393   1              AUXR &= 0xBF;           //定时器1时钟为Fosc/12,即12T
+ 394   1              AUXR &= 0xFE;           //串口1选择定时器1为波特率发生器
+ 395   1              TMOD &= 0x0F;           //设定定时器1为16位自动重装方式
+ 396   1              TL1 = 0xCC;             //设定定时初值
+ 397   1              TH1 = 0xFF;             //设定定时初值
+ 398   1              ET1 = 0;                //禁止定时器1中断
+ 399   1              TR1 = 1;                //启动定时器1
+ 400   1              EA = 1;
+ 401   1              ES = 1;
+ 402   1      }
+ 403          void system_init()
+ 404          {
+ 405   1              HC138_Init(4,0xff);
+ 406   1              HC138_Init(5,0x00);
+ 407   1              Timer0Init();
+ 408   1              UartInit();
+ 409   1              ds18b20_init();
+ 410   1      }
+ 411          void main()
+ 412          {
+ 413   1              system_init();
+ 414   1              while(1)
+ 415   1              {
+ 416   2                      ds18b20_read();
+ 417   2                      write_stock();
+ 418   2                      uart_work();
+ 419   2                      key_work();
+ 420   2                      smg_work();
+ 421   2              }
+ 422   1      }
+ 423          void Timer_Routine() interrupt 1
+ 424          {
+ 425   1              if(++smg_down_t == 10)          smg_down_t = 0;
+ 426   1              if(++temp_down_t == 200)                temp_down_t = 0;
+C51 COMPILER V9.54   MAIN                                                                  05/16/2024 21:58:55 PAGE 8   
+
+ 427   1              if(++key_down_t == 10)          key_down_t = 0;
+ 428   1              if(++stoc_down_t==25)           stoc_down_t = 0;
+ 429   1              if(long_an)             time1s++;
+ 430   1              
+ 431   1              if(sys_cli)             uar_10ms++;
+ 432   1              
+ 433   1              if(time1s>=1000)
+ 434   1              {
+ 435   2                      time1s=0;
+ 436   2                      flag1s=1;
+ 437   2              }
+ 438   1              led_work();
+ 439   1              smg_bit();
+ 440   1      }
+ 441          void Uart_Routine() interrupt 4
+ 442          {
+ 443   1              if(RI==1)
+ 444   1              {
+ 445   2                      sys_cli = 1;
+ 446   2                      uar_10ms = 0;
+ 447   2                      rx_buff[rx_cnt++] = SBUF;
+ 448   2                      RI = 0;         
+ 449   2              }
+ 450   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1823    ----
+   CONSTANT SIZE    =     30    ----
+   XDATA SIZE       =     24    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     32       9
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

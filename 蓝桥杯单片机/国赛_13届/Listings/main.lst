@@ -1,0 +1,485 @@
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.
+                    -lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "configure.h"
+   3          #include "iic.h"
+   4          //***************************************
+   5          sbit tx=P1^0;
+   6          sbit rx=P1^1;
+   7          u8 smg_down_t=0;
+   8          u8 key_down_t=0;
+   9          u8 csb_down_t=0;
+  10          u8 sid_down_t=0;
+  11          u16 freqcnt;
+  12          u8 key_old,key_val,key_down,key_up;
+  13          u8 mode=1,modepro=1,modeplus=1;
+  14          //****
+  15          bit s7=0;
+  16          bit old_dist=0;
+  17          u16 freq;
+  18          u8 sidu=35;
+  19          u16 distance;
+  20          u8 freq_para=90;
+  21          u8 sidu_para=40;
+  22          u8 dist_para=6;
+  23          //****
+  24          u8 y5c_state=0x00;
+  25          u8 pwm=1,pwm_cnt=0;
+  26          u8 led_state=0xff;
+  27          u8 jdq_cnt=0;
+  28          u16 time1s,time100ms;
+  29          bit flag1s=0;
+  30          bit state_100ms=0;
+  31          bit flag100ms=0;
+  32          //**************************************
+  33          void led_work()
+  34          {
+  35   1              if(mode==1)
+  36   1              {
+  37   2                      led_state &= 0xFE;
+  38   2                      state_100ms=0;
+  39   2              }else if(mode==4 && modepro==1){
+  40   2                      state_100ms=1;
+  41   2                      if(flag100ms)
+  42   2                      {
+  43   3                              flag100ms=0;
+  44   3                              if((led_state&0x01)==0x00)
+  45   3                              {
+  46   4                                      led_state |= 0x01;
+  47   4                              }else{
+  48   4                                      led_state &=~0x01;
+  49   4                              }
+  50   3                      }
+  51   2              }else{
+  52   2                      led_state |= 0x01;
+  53   2              }
+  54   1      //***********
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 2   
+
+  55   1              if(mode==2)
+  56   1              {
+  57   2                      led_state &= 0xFD;
+  58   2                      state_100ms=0;
+  59   2              }else if(mode==4 && modepro==2){
+  60   2                      state_100ms=1;
+  61   2                      if(flag100ms)
+  62   2                      {
+  63   3                              flag100ms=0;
+  64   3                              if((led_state&0x02)==0x00)
+  65   3                              {
+  66   4                                      led_state |= 0x02;
+  67   4                              }else{
+  68   4                                      led_state &=~0x02;
+  69   4                              }
+  70   3                      }
+  71   2              }else{
+  72   2                      led_state |= 0x02;
+  73   2              }
+  74   1      //*********
+  75   1              if(mode==3)
+  76   1              {
+  77   2                      led_state &= 0xFB;
+  78   2                      state_100ms=0;
+  79   2              }else if(mode==4 && modepro==3){
+  80   2                      state_100ms=1;
+  81   2                      if(flag100ms)
+  82   2                      {
+  83   3                              flag100ms=0;
+  84   3                              if((led_state&0x04)==0x00)
+  85   3                              {
+  86   4                                      led_state |= 0x04;
+  87   4                              }else{
+  88   4                                      led_state &=~0x04;
+  89   4                              }
+  90   3                      }
+  91   2              }else{
+  92   2                      led_state |= 0x04;
+  93   2              }
+  94   1              if(pwm==4)
+  95   1              {
+  96   2                      led_state &= 0xF7;
+  97   2              }else{
+  98   2                      led_state |=~0xF7;
+  99   2              }
+ 100   1              if(sidu>sidu_para)
+ 101   1              {
+ 102   2                      led_state &= 0xEF;
+ 103   2              }else{
+ 104   2                      led_state |=~0xEF;
+ 105   2              }
+ 106   1              if(old_dist)
+ 107   1              {
+ 108   2                      led_state &= 0xDF;
+ 109   2              }else{
+ 110   2                      led_state |=~0xDF;
+ 111   2              }
+ 112   1              HC138_Init(4,led_state);
+ 113   1      }
+ 114          void dist_panduan()
+ 115          {
+ 116   1              if(distance>dist_para*10)
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 3   
+
+ 117   1              {
+ 118   2                      y5c_state |= 0x10;
+ 119   2                      if(!old_dist)
+ 120   2                      {
+ 121   3                              jdq_cnt++;
+ 122   3                              AT24C02_Write(0x00,jdq_cnt);    
+ 123   3                              Delay5ms();
+ 124   3                      }
+ 125   2                      old_dist=1;
+ 126   2              }else{
+ 127   2                      old_dist=0;
+ 128   2                      y5c_state &=~0x10;
+ 129   2              }
+ 130   1              HC138_Init(5,y5c_state);
+ 131   1      }
+ 132          void freq_panduan()
+ 133          {
+ 134   1              if(freq>freq_para*100)
+ 135   1              {
+ 136   2                      pwm=4;
+ 137   2              }else{
+ 138   2                      pwm=1;
+ 139   2              }
+ 140   1              
+ 141   1              HC138_Init(5,y5c_state);
+ 142   1      }
+ 143          void sidu_read()
+ 144          {
+ 145   1              u8 temp=0;
+ 146   1              if(sid_down_t) return;
+ 147   1              sid_down_t=1;
+ 148   1              temp = PCF8591_ADchange(0x43);
+ 149   1              sidu = temp/51.0*20;
+ 150   1      }
+ 151          void dac_output()
+ 152          {
+ 153   1              float Data;
+ 154   1              u8 temp;
+ 155   1              if(sidu<=sidu_para)
+ 156   1              {
+ 157   2                      temp = 51;
+ 158   2              }else if(sidu>=80)
+ 159   1              {
+ 160   2                      temp = 255;
+ 161   2              }else{
+ 162   2                      Data = 4.0*sidu/(80-sidu_para)+5-320.0/(80-sidu_para);
+ 163   2                      temp = Data*51;
+ 164   2              }
+ 165   1              PCF8591_DAchange(temp);
+ 166   1      }
+ 167          void Sendwave()
+ 168          {
+ 169   1              u8 i;
+ 170   1              for(i=0; i<8; i++)
+ 171   1              {
+ 172   2                      tx=0;
+ 173   2                      Delay14us();
+ 174   2                      tx=1;
+ 175   2                      Delay14us();
+ 176   2              }
+ 177   1      }
+ 178          void dist_read()
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 4   
+
+ 179          {
+ 180   1              u16 time;
+ 181   1              if(csb_down_t)  return;
+ 182   1              csb_down_t=1;
+ 183   1              CMOD=0x00;
+ 184   1              CH=CL=0;
+ 185   1              EA=0;
+ 186   1              Sendwave();
+ 187   1              EA=1;CR=1;
+ 188   1              while(rx&&!CF);
+ 189   1              CR=0;
+ 190   1              if(CF==0)
+ 191   1              {
+ 192   2                      time=CH;
+ 193   2                      time=(time<<8)|CL;
+ 194   2                      distance=time*0.017;
+ 195   2              }else{
+ 196   2                      CF=0;
+ 197   2                      distance=255;
+ 198   2              }
+ 199   1      }
+ 200          u8 key_read()
+ 201          {
+ 202   1              u8 temp=0;
+ 203   1              if(P33==0)      temp=4;
+ 204   1              if(P32==0)      temp=5;
+ 205   1              if(P31==0)      temp=6;
+ 206   1              if(P30==0)      temp=7;
+ 207   1              return temp;
+ 208   1      }
+ 209          void key_work()
+ 210          {
+ 211   1              if(key_down_t)  return;
+ 212   1              key_down_t=1;
+ 213   1              key_val = key_read();
+ 214   1              key_down = key_val&(key_old^key_val);
+ 215   1              key_up   = ~key_val&(key_old^key_val);
+ 216   1              key_old  = key_val;
+ 217   1              
+ 218   1              if(key_down==4)
+ 219   1              {
+ 220   2                      if(++mode>=5)   mode=1;
+ 221   2                      modepro=1;
+ 222   2              }
+ 223   1              if(key_down==5)
+ 224   1              {
+ 225   2                      if(mode==4)
+ 226   2                      {
+ 227   3                              if(++modepro==4)        modepro=1;
+ 228   3                      }
+ 229   2              }
+ 230   1              if(key_down==6)         //加
+ 231   1              {
+ 232   2                      if(mode==4 && modepro==1)
+ 233   2                      {
+ 234   3                              freq_para += 5;
+ 235   3                              if(freq_para>=125)      freq_para=10;
+ 236   3                      }
+ 237   2                      if(mode==4 && modepro==2)
+ 238   2                      {
+ 239   3                              sidu_para += 10;
+ 240   3                              if(sidu_para>=70)       sidu_para=10;
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 5   
+
+ 241   3                      }
+ 242   2                      if(mode==4 && modepro==3)
+ 243   2                      {
+ 244   3                              dist_para += 1;
+ 245   3                              if(dist_para>=13)       dist_para=1;
+ 246   3                      }
+ 247   2                      if(mode==3)
+ 248   2                      {
+ 249   3                              if(++modepro==3)        modepro=1;
+ 250   3                      }
+ 251   2              }
+ 252   1              if(key_down==7)
+ 253   1              {
+ 254   2                      s7=1;
+ 255   2                      if(mode==4 && modepro==1)
+ 256   2                      {
+ 257   3                              freq_para -= 5;
+ 258   3                              if(freq_para<=5)        freq_para=120;
+ 259   3                      }
+ 260   2                      if(mode==4 && modepro==2)
+ 261   2                      {
+ 262   3                              sidu_para -= 10;
+ 263   3                              if(sidu_para<=0)        sidu_para=60;
+ 264   3                      }
+ 265   2                      if(mode==4 && modepro==3)
+ 266   2                      {
+ 267   3                              dist_para -= 1;
+ 268   3                              if(dist_para<=0)        dist_para=12;
+ 269   3                      }
+ 270   2                      if(mode==1)
+ 271   2                      {
+ 272   3                              if(++modepro==3)        modepro=1;
+ 273   3                      }
+ 274   2              }
+ 275   1              if(key_up==7)
+ 276   1              {
+ 277   2                      s7=0;
+ 278   2                      time1s=0;
+ 279   2                      if(flag1s)
+ 280   2                      {
+ 281   3                              flag1s=0;
+ 282   3                              jdq_cnt=0;
+ 283   3                              AT24C02_Write(0x00,jdq_cnt);
+ 284   3                              Delay5ms();
+ 285   3                      }
+ 286   2              }
+ 287   1      }
+ 288          void smg_work()
+ 289          {
+ 290   1              if(smg_down_t) return;
+ 291   1              smg_down_t=1;
+ 292   1              //******
+ 293   1              dac_output();
+ 294   1              dist_panduan();
+ 295   1              //******
+ 296   1              if(mode==1)             //频率界面
+ 297   1              {
+ 298   2                      smg_data[0]=0x8e;smg_data[1]=0xff;
+ 299   2                      smg_data[2]=0xff;
+ 300   2                      if(modepro==1)                  //HZ
+ 301   2                      {
+ 302   3                              if(freq>9999)   smg_data[3]=SMG_NoDot[freq/10000];  else        smg_data[3]=0xff;
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 6   
+
+ 303   3                              if(freq>999)    smg_data[4]=SMG_NoDot[freq/1000%10];else smg_data[4]=0xff;
+ 304   3                              if(freq>99)             smg_data[5]=SMG_NoDot[freq/100%10]; else smg_data[5]=0xff;
+ 305   3                              if(freq>9)              smg_data[6]=SMG_NoDot[freq/10%10];  else        smg_data[6]=0xff;
+ 306   3                              smg_data[7]=SMG_NoDot[freq%10];
+ 307   3                      }else if(modepro==2){   //KHZ
+ 308   3                              smg_data[3]=0xff;smg_data[4]=0xff;
+ 309   3                              if(freq>9999)   smg_data[5]=SMG_NoDot[freq/10000];   else smg_data[5]=0xff;
+ 310   3                              if(freq>999)    smg_data[6]=SMG_Dot[freq/1000%10];      else smg_data[6]=SMG_Dot[0];
+ 311   3                              if(freq>99)     smg_data[7]=SMG_NoDot[freq/100%10];  else {smg_data[7]=SMG_NoDot[0];smg_data[6]=0xff;}
+ 312   3                      }
+ 313   2              }
+ 314   1              if(mode==2)             //湿度界面
+ 315   1              {
+ 316   2                      smg_data[0]=0x89;smg_data[1]=0xff;
+ 317   2                      smg_data[2]=0xff;smg_data[3]=0xff;
+ 318   2                      smg_data[4]=0xff;smg_data[5]=0xff;
+ 319   2                      smg_data[6]=SMG_NoDot[sidu/10];
+ 320   2                      smg_data[7]=SMG_NoDot[sidu%10];
+ 321   2              }
+ 322   1              if(mode==3)             //测距界面
+ 323   1              {
+ 324   2                      smg_data[0]=0x88;smg_data[1]=0xff;
+ 325   2                      smg_data[2]=0xff;smg_data[3]=0xff;
+ 326   2                      smg_data[4]=0xff;
+ 327   2                      if(modepro==1)
+ 328   2                      {
+ 329   3                              if(distance>99)smg_data[5]=SMG_NoDot[distance/100];else smg_data[5]=0xff;
+ 330   3                              if(distance>9)smg_data[6]=SMG_NoDot[distance/10%10];else smg_data[6]=0xff;
+ 331   3                              smg_data[7]=SMG_NoDot[distance%10];
+ 332   3                      }else if(modepro==2){
+ 333   3                              smg_data[5]=SMG_Dot[distance/100];
+ 334   3                              smg_data[6]=SMG_NoDot[distance/10%10];
+ 335   3                              smg_data[7]=SMG_NoDot[distance%10];
+ 336   3                      }
+ 337   2              }
+ 338   1              if(mode==4)             //参数界面
+ 339   1              {
+ 340   2                      smg_data[0]=0x8c;smg_data[2]=0xff;
+ 341   2                      smg_data[3]=0xff;smg_data[4]=0xff;
+ 342   2                      if(modepro==1)  //频率参数
+ 343   2                      {
+ 344   3                              smg_data[1]=SMG_NoDot[modepro];
+ 345   3                              if(freq_para>99)smg_data[5]=SMG_NoDot[freq_para/100];else smg_data[5]=0xff;
+ 346   3                              if(freq_para>9)smg_data[6]=SMG_Dot[freq_para/10%10];else smg_data[6]=SMG_Dot[0];
+ 347   3                              smg_data[7]=SMG_NoDot[freq_para%10];
+ 348   3                      }
+ 349   2                      if(modepro==2)  //湿度参数
+ 350   2                      {
+ 351   3                              smg_data[1]=SMG_NoDot[modepro];
+ 352   3                              smg_data[5]=0xff;
+ 353   3                              smg_data[6]=SMG_NoDot[sidu_para/10];
+ 354   3                              smg_data[7]=SMG_NoDot[sidu_para%10];
+ 355   3                      }
+ 356   2                      if(modepro==3)  //距离参数
+ 357   2                      {
+ 358   3                              smg_data[1]=SMG_NoDot[modepro];
+ 359   3                              smg_data[5]=0xff;
+ 360   3                              if(dist_para>9)smg_data[6]=SMG_Dot[dist_para/10]; else smg_data[6]=SMG_Dot[0];
+ 361   3                              smg_data[7]=SMG_NoDot[dist_para%10];
+ 362   3                      }
+ 363   2              }
+ 364   1      }
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 7   
+
+ 365          void Time01init(void)//200微秒
+ 366          {
+ 367   1              TMOD=0x15;
+ 368   1              TH0=0;TH1=0;
+ 369   1              TH1=0xFF;
+ 370   1              TL1=0x38;
+ 371   1              EA = 1;
+ 372   1              ET1= 1;
+ 373   1              EA = 1;
+ 374   1              TR0=1;
+ 375   1              TR1=1;
+ 376   1      }
+ 377          void Timer2Init(void)           //1毫秒@12.000MHz
+ 378          {
+ 379   1              AUXR &= 0xFB;           //定时器时钟12T模式
+ 380   1              T2L = 0x18;             //设置定时初值
+ 381   1              T2H = 0xFC;             //设置定时初值
+ 382   1              AUXR |= 0x10;           //定时器2开始计时
+ 383   1              IE2 |= 0x04;
+ 384   1              EA  =1;
+ 385   1      }
+ 386          void system_init()
+ 387          {
+ 388   1              HC138_Init(4,0xff);
+ 389   1              HC138_Init(5,0x00);
+ 390   1              Time01init();
+ 391   1              Timer2Init();
+ 392   1              
+ 393   1      }
+ 394          void main()
+ 395          {
+ 396   1              system_init();
+ 397   1              while(1)
+ 398   1              {
+ 399   2                      dist_read();
+ 400   2                      key_work();
+ 401   2                      smg_work();
+ 402   2                      sidu_read();
+ 403   2              }
+ 404   1      }
+ 405          void Timer1_Routine() interrupt 3
+ 406          {
+ 407   1              TH1=0xFF;
+ 408   1              TL1=0x38;
+ 409   1              pwm_cnt++;
+ 410   1              pwm_cnt%=6;
+ 411   1              if(++freqcnt==5000)
+ 412   1              {
+ 413   2                      freqcnt=0;
+ 414   2                      freq=TH0;
+ 415   2                      freq=(freq<<8)|TL0;
+ 416   2                      TH0=0;TL0=0;
+ 417   2              }
+ 418   1              if(pwm_cnt<=pwm)
+ 419   1              {
+ 420   2                      y5c_state |= 0x20;
+ 421   2              }else{
+ 422   2                      y5c_state &=~0x20;
+ 423   2              }
+ 424   1              HC138_Init(5,y5c_state);
+ 425   1      }
+ 426          void Timer2_Routine() interrupt 12
+C51 COMPILER V9.54   MAIN                                                                  05/13/2024 22:33:56 PAGE 8   
+
+ 427          {
+ 428   1              if(++smg_down_t==10)            smg_down_t=0;
+ 429   1              if(++key_down_t==10)            key_down_t=0;
+ 430   1              if(++csb_down_t==200)   csb_down_t=0;
+ 431   1              if(++sid_down_t==5)             sid_down_t=0;
+ 432   1              if(s7)                                  time1s++;
+ 433   1              if(state_100ms)                 time100ms++;
+ 434   1              if(time100ms==100)
+ 435   1              {
+ 436   2                      time100ms=0;
+ 437   2                      flag100ms=1;
+ 438   2              }
+ 439   1              if(time1s>=1000)
+ 440   1              {
+ 441   2                      flag1s=1;
+ 442   2                      time1s=0;
+ 443   2              }
+ 444   1              smg_bit();
+ 445   1              freq_panduan();
+ 446   1              led_work();
+ 447   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2147    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     30       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      5    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,405 @@
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.
+                    -lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "configure.h"
+   3          #include "ds1302.h"
+   4          #include "onewire.h"
+   5          #include "iic.h"
+   6          //===================================
+   7          u8 code write_addr[7]={0x80,0x82,0x84,0x86,0x88,0x8a,0x8c};
+   8          u8 code read_addr[7]={0x81,0x83,0x85,0x87,0x89,0x8b,0x8d};
+   9          u8 time[7]={0x50,0x59,0x16,0x07,0x05,0x02,0x24};
+  10          // 秒 分 时 日 月 周 年
+  11          u8 sec,min,hour;
+  12          u8 key_old,key_val,key_up,key_down;
+  13          u8 smg_down_t=0;
+  14          u8 key_down_t=0;
+  15          u8 temp_down_t=0;
+  16          u8 dac_down_t=0;
+  17          u8 led_down_t=0;
+  18          //----
+  19          u8 mode=1,mode1=1;
+  20          bit ray_state=0;   //0为亮1为暗
+  21          bit led3_flag=0;
+  22          bit one=0,flag=0;
+  23          u16 temp;//三位数1小数
+  24          u16 voltage;
+  25          u16 time3s;
+  26          u8 adc_old;
+  27          u8 time_para=17,time_para_s=17;
+  28          u8 temp_para=25,temp_para_s=25;
+  29          u8 led_para=4,led_para_s=4;
+  30          u8 led_state=0xff;
+  31          u8 led_state_t=0xff;
+  32          //===================================
+  33          void Delay(u16 a)
+  34          {
+  35   1              while(a--);
+  36   1      }
+  37          u8 key_read()
+  38          {
+  39   1              u8 temp=0;
+  40   1              ET0=0;
+  41   1              P44=0;P42=1;
+  42   1              if(P32==0)      temp=5;
+  43   1              if(P33==0)      temp=4;
+  44   1              P44=1;P42=0;
+  45   1              if(P32==0)      temp=9;
+  46   1              if(P33==0)      temp=8;
+  47   1              ET0=1;
+  48   1              return temp;
+  49   1      }
+  50          void da_read()
+  51          {
+  52   1              u8 Data;
+  53   1              if(dac_down_t)  return;
+  54   1              dac_down_t=1;
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 2   
+
+  55   1              Data = AD_Input(0x41);
+  56   1              if(Data>180)
+  57   1              {
+  58   2                      ray_state=0;
+  59   2              }else{
+  60   2                      ray_state=1;
+  61   2              }
+  62   1              if(one)
+  63   1              {
+  64   2                      if((adc_old<120 && Data<120)|(adc_old>180 && Data>180))
+  65   2                      {
+  66   3                              flag=1;
+  67   3                      }else{
+  68   3                              flag=0;
+  69   3                              time3s=0;
+  70   3                      }
+  71   2              }
+  72   1              adc_old = Data;
+  73   1              one=1;
+  74   1              voltage = Data*5.0/255*100;
+  75   1      }
+  76          void ds18b20_init()
+  77          {
+  78   1              u8 i;
+  79   1              init_ds18b20();
+  80   1              Write_DS18B20(0xcc);
+  81   1              Write_DS18B20(0x44);
+  82   1              for(i=0; i<8; i++)
+  83   1              {
+  84   2                      Delay(60000);
+  85   2              }
+  86   1      }
+  87          void ds18b20_read()
+  88          {
+  89   1              float temp0;
+  90   1              u8 LSB,MSB;
+  91   1              if(temp_down_t)  return;
+  92   1              temp_down_t=1;
+  93   1              init_ds18b20();
+  94   1              Write_DS18B20(0xcc);
+  95   1              Write_DS18B20(0x44);
+  96   1              init_ds18b20();
+  97   1              Write_DS18B20(0xcc);
+  98   1              Write_DS18B20(0xbe);
+  99   1              LSB = Read_DS18B20();
+ 100   1              MSB = Read_DS18B20();
+ 101   1              temp = MSB;
+ 102   1              temp = (temp<<8)|LSB;
+ 103   1              if((temp&0xf800) ==0x0000)
+ 104   1              {
+ 105   2                      temp0 = temp*0.0625;
+ 106   2                      temp  = temp0*10;
+ 107   2              }
+ 108   1      }
+ 109          void ds1302_init()
+ 110          {
+ 111   1              u8 i;
+ 112   1              Write_Ds1302_Byte(0x8e,0x00);
+ 113   1              for(i=0; i<7; i++)
+ 114   1              {
+ 115   2                      Write_Ds1302_Byte(write_addr[i],time[i]);
+ 116   2              }
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 3   
+
+ 117   1              Write_Ds1302_Byte(0x8e,0x80);
+ 118   1      }
+ 119          void ds1302_read()
+ 120          {
+ 121   1              time[0]  = Read_Ds1302_Byte(0x81);
+ 122   1              time[1]  = Read_Ds1302_Byte(0x83);
+ 123   1              time[2]  = Read_Ds1302_Byte(0x85);
+ 124   1              sec  = time[0]/16*10+time[0]%16;
+ 125   1              min  = time[1]/16*10+time[1]%16;
+ 126   1              hour = time[2]/16*10+time[2]%16;
+ 127   1      }
+ 128          void led_work()
+ 129          {
+ 130   1              if(led_down_t) return;
+ 131   1              led_down_t=1;
+ 132   1              if(((hour>=time_para) && (hour<8)) | (time_para>=8)&&(hour>=time_para))
+ 133   1              {
+ 134   2                      led_state &= ~0x01;
+ 135   2              }else{
+ 136   2                      led_state |=  0x01;
+ 137   2              }
+ 138   1              //------
+ 139   1              if(temp<(temp_para*10))
+ 140   1              {
+ 141   2                      led_state &= ~0x02;
+ 142   2              }else{
+ 143   2                      led_state |=  0x02;
+ 144   2              }
+ 145   1              //------
+ 146   1              if(led3_flag)
+ 147   1              {
+ 148   2                      led_state &= ~0x04;
+ 149   2              }else{
+ 150   2                      led_state |=  0x04;
+ 151   2              }
+ 152   1              //---LED4-8
+ 153   1              if(ray_state)
+ 154   1              {
+ 155   2                      led_state_t &= ~(0x01<<(led_para-1));
+ 156   2                      led_state = (led_state&0x07)|(led_state_t&0xf8);
+ 157   2                      led_state_t=0xff;
+ 158   2              }else{
+ 159   2                      led_state_t=0xff;
+ 160   2                      led_state = (led_state&0x07)|(led_state_t&0xf8);
+ 161   2              }
+ 162   1              HC138_Init(4,led_state);
+ 163   1      }
+ 164          void update_key()
+ 165          {
+ 166   1              if(key_down_t)  return;
+ 167   1              key_down_t=1;
+ 168   1              key_val=key_read();
+ 169   1              key_down=key_val&(key_old^key_val);
+ 170   1              key_up=~key_old&(key_old^key_val);
+ 171   1              key_old=key_val;
+ 172   1              
+ 173   1              if(!(mode==2 && mode1==1))      time_para = time_para_s;
+ 174   1              if(!(mode==2 && mode1==2))      temp_para = temp_para_s;
+ 175   1              if(!(mode==2 && mode1==3))      led_para = led_para_s;
+ 176   1              
+ 177   1              if(key_down==4)
+ 178   1              {
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 4   
+
+ 179   2                      if(++mode==3)   mode=1;
+ 180   2                      mode1=1;
+ 181   2              }
+ 182   1              if(key_down==5)
+ 183   1              {
+ 184   2                      if(++mode1==4)  mode1=1;
+ 185   2              }
+ 186   1              if(key_down==8)
+ 187   1              {
+ 188   2                      if(mode==2)
+ 189   2                      {
+ 190   3                              if(mode1==1)
+ 191   3                              {
+ 192   4                                      if(time_para_s==0)
+ 193   4                                      {
+ 194   5                                              time_para_s=0;
+ 195   5                                      }else{
+ 196   5                                              time_para_s--;
+ 197   5                                      }
+ 198   4                              }
+ 199   3                              if(mode1==2)
+ 200   3                              {
+ 201   4                                      if(temp_para_s==0)
+ 202   4                                      {
+ 203   5                                              temp_para_s=0;
+ 204   5                                      }else{
+ 205   5                                              temp_para_s--;
+ 206   5                                      }
+ 207   4                              }
+ 208   3                              if(mode1==3)
+ 209   3                              {
+ 210   4                                      if(led_para_s==4)
+ 211   4                                      {
+ 212   5                                              led_para_s=4;
+ 213   5                                      }else{
+ 214   5                                              led_para_s--;
+ 215   5                                      }
+ 216   4                              }
+ 217   3                      }
+ 218   2              }
+ 219   1              if(key_down==9)
+ 220   1              {
+ 221   2                      if(mode==2)
+ 222   2                      {
+ 223   3                              if(mode1==1)
+ 224   3                              {
+ 225   4                                      if(time_para_s==23)
+ 226   4                                      {
+ 227   5                                              time_para_s=23;
+ 228   5                                      }else{
+ 229   5                                              time_para_s++;
+ 230   5                                      }
+ 231   4                              }
+ 232   3                              if(mode1==2)
+ 233   3                              {
+ 234   4                                      if(temp_para_s==99)
+ 235   4                                      {
+ 236   5                                              temp_para_s=99;
+ 237   5                                      }else{
+ 238   5                                              temp_para_s++;
+ 239   5                                      }
+ 240   4                              }
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 5   
+
+ 241   3                              if(mode1==3)
+ 242   3                              {
+ 243   4                                      if(led_para_s==8)
+ 244   4                                      {
+ 245   5                                              led_para_s=8;
+ 246   5                                      }else{
+ 247   5                                              led_para_s++;
+ 248   5                                      }
+ 249   4                              }
+ 250   3                      }
+ 251   2              }
+ 252   1      }
+ 253          void update_smg()
+ 254          {
+ 255   1              if(smg_down_t)  return;
+ 256   1              smg_down_t=1;
+ 257   1      //--------
+ 258   1              ds1302_read();
+ 259   1      //--------
+ 260   1              if(mode==1)     //      数据界面
+ 261   1              {
+ 262   2                      if(mode1==1)            //时间数据显示
+ 263   2                      {
+ 264   3                              smg_data[0]=SMG_NoDot[hour/10];smg_data[1]=SMG_NoDot[hour%10];
+ 265   3                              smg_data[2]=0xbf;
+ 266   3                              smg_data[3]=SMG_NoDot[min/10];smg_data[4]=SMG_NoDot[min%10];
+ 267   3                              smg_data[5]=0xbf;
+ 268   3                              smg_data[6]=SMG_NoDot[sec/10];smg_data[7]=SMG_NoDot[sec%10];
+ 269   3                      }
+ 270   2                      if(mode1==2)            //温度数据显示
+ 271   2                      {
+ 272   3                              smg_data[0]=0xc6;smg_data[1]=0xff;smg_data[2]=0xff;
+ 273   3                              smg_data[3]=0xff;smg_data[4]=0xff;
+ 274   3                              smg_data[5]=SMG_NoDot[temp/100];
+ 275   3                              smg_data[6]=SMG_Dot[temp/10%10];
+ 276   3                              smg_data[7]=SMG_NoDot[temp%10];
+ 277   3                      }
+ 278   2                      if(mode1==3)            //亮暗状态
+ 279   2                      {
+ 280   3                              smg_data[0]=0x86;smg_data[1]=0xff;
+ 281   3                              smg_data[5]=0xff;smg_data[6]=0xff;
+ 282   3                              smg_data[2]=SMG_Dot[voltage/100];
+ 283   3                              smg_data[3]=SMG_NoDot[voltage/10%10];
+ 284   3                              smg_data[4]=SMG_NoDot[voltage%10];
+ 285   3                              smg_data[7]=SMG_NoDot[ray_state];
+ 286   3                      }
+ 287   2              }
+ 288   1              if(mode==2)     //参数界面
+ 289   1              {
+ 290   2                      if(mode1==1)            //时间参数
+ 291   2                      {
+ 292   3                              smg_data[0]=0x8c;smg_data[2]=0xff;
+ 293   3                              smg_data[3]=0xff;smg_data[4]=0xff;
+ 294   3                              smg_data[5]=0xff;
+ 295   3                              smg_data[1]=SMG_NoDot[1];
+ 296   3                              smg_data[6]=SMG_NoDot[time_para_s/10];
+ 297   3                              smg_data[7]=SMG_NoDot[time_para_s%10];
+ 298   3                      }
+ 299   2                      if(mode1==2)            //温度参数
+ 300   2                      {
+ 301   3                              smg_data[0]=0x8c;smg_data[2]=0xff;
+ 302   3                              smg_data[3]=0xff;smg_data[4]=0xff;
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 6   
+
+ 303   3                              smg_data[5]=0xff;
+ 304   3                              smg_data[1]=SMG_NoDot[2];
+ 305   3                              smg_data[6]=SMG_NoDot[temp_para_s/10];
+ 306   3                              smg_data[7]=SMG_NoDot[temp_para_s%10];
+ 307   3                      }
+ 308   2                      if(mode1==3)            //指示灯参数
+ 309   2                      {
+ 310   3                              smg_data[0]=0x8c;smg_data[2]=0xff;
+ 311   3                              smg_data[3]=0xff;smg_data[4]=0xff;
+ 312   3                              smg_data[5]=0xff;smg_data[6]=0xff;
+ 313   3                              smg_data[1]=SMG_NoDot[3];
+ 314   3                              smg_data[7]=SMG_NoDot[led_para_s];
+ 315   3                      }
+ 316   2              }
+ 317   1      }
+ 318          void Timer0Init(void)           //1毫秒@12.000MHz
+ 319          {
+ 320   1              AUXR &= 0x7F;           //定时器时钟12T模式
+ 321   1              TMOD &= 0xF0;           //设置定时器模式
+ 322   1              TL0 = 0x18;             //设置定时初值
+ 323   1              TH0 = 0xFC;             //设置定时初值
+ 324   1              TR0 = 1;                //定时器0开始计时
+ 325   1              ET0 = 1;
+ 326   1              EA  = 1;
+ 327   1      }
+ 328          void system_init()
+ 329          {
+ 330   1              HC138_Init(4,0xff);
+ 331   1              HC138_Init(5,0x00);
+ 332   1              Timer0Init();
+ 333   1              ds18b20_init();
+ 334   1              ds1302_init();
+ 335   1              temp_down_t=0;
+ 336   1              ds18b20_read();
+ 337   1      }
+ 338          void main()
+ 339          {
+ 340   1              system_init();
+ 341   1              while(1)
+ 342   1              {
+ 343   2                      ds18b20_read();
+ 344   2                      da_read();
+ 345   2                      led_work();
+ 346   2                      update_smg();
+ 347   2                      update_key();
+ 348   2              }
+ 349   1      }
+ 350          void Timer0_Routine() interrupt 1
+ 351          {
+ 352   1              if(++smg_down_t==10)            smg_down_t=0;
+ 353   1              if(++key_down_t==10)            key_down_t=0;
+ 354   1              if(++temp_down_t==200)  temp_down_t=0;
+ 355   1              if(++dac_down_t==30)            dac_down_t=0;
+ 356   1              if(++led_down_t==5)             led_down_t=0;
+ 357   1              if(flag)                                time3s++;
+ 358   1              if(time3s==3000)
+ 359   1              {
+ 360   2                      time3s=0;
+ 361   2                      if(ray_state)
+ 362   2                      {
+ 363   3                              led3_flag=1;
+ 364   3                      }else{
+C51 COMPILER V9.54   MAIN                                                                  05/07/2024 20:21:50 PAGE 7   
+
+ 365   3                              led3_flag=0;
+ 366   3                      }
+ 367   2              }
+ 368   1              smg_bit();
+ 369   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1516    ----
+   CONSTANT SIZE    =     14    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     36       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      4    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

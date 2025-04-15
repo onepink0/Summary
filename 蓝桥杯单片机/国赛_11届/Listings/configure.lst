@@ -1,0 +1,66 @@
+C51 COMPILER V9.54   CONFIGURE                                                             05/07/2024 16:20:44 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE CONFIGURE
+OBJECT MODULE PLACED IN .\Objects\configure.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE ..\12½ì\configure.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\L
+                    -istings\configure.lst) OBJECT(.\Objects\configure.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "intrins.h"
+   3          typedef unsigned char u8;
+   4          typedef unsigned int u16;
+   5          
+   6          u8 code SMG_NoDot[10]={0xC0,0xF9,0xA4,0xB0,0x99,0x92,0x82,0xF8,0x80,0x90};
+   7          //1   2   3   4   5   6   7   8   9
+   8          u8 code SMG_Dot[10]={0x40,0x79,0x24,0x30,0x19,0x12,0x02,0x78,0x00,0x10};
+   9          // 0. 1. 2. 3. 4. 5. 6. 7. 8. 9.
+  10          u8 smg_data[8]={255,255,255,255,255,255,255,255};
+  11          
+  12          void Delay14us()                //@12.000MHz
+  13          {
+  14   1              unsigned char i;
+  15   1      
+  16   1              _nop_();
+  17   1              _nop_();
+  18   1              i = 38;
+  19   1              while (--i);
+  20   1      }
+  21          
+  22          void HC138_Init(u8 num1,num2)
+  23          {
+  24   1              P2 = P2&0x1f;
+  25   1              P0 = num2;
+  26   1              switch(num1)
+  27   1              {
+  28   2                      case 4: P2=(P2&0x1f)|0x80; break;
+  29   2                      case 5: P2=(P2&0x1f)|0xa0; break;
+  30   2                      case 6: P2=(P2&0x1f)|0xc0; break;
+  31   2                      case 7: P2=(P2&0x1f)|0xe0; break;
+  32   2              }
+  33   1              P2 = P2&0x1f;
+  34   1      }
+  35          void smg_bit()
+  36          {
+  37   1              static u8 pos=0;
+  38   1              HC138_Init(7,0xff);
+  39   1              HC138_Init(6,0x01<<pos);
+  40   1              HC138_Init(7,smg_data[pos]);
+  41   1              if(++pos==8)    pos=0;
+  42   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    126    ----
+   CONSTANT SIZE    =     20    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      9    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

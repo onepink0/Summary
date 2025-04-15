@@ -1,0 +1,78 @@
+C51 COMPILER V9.54   NIXIEINIT                                                             03/22/2024 21:56:26 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE NIXIEINIT
+OBJECT MODULE PLACED IN .\Objects\NixieInit.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE NixieInit.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\
+                    -NixieInit.lst) OBJECT(.\Objects\NixieInit.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          unsigned char code SMG_NoDot[10] =      {0xC0,0xF9,0xA4,0xB0,0x99,0x92,0x82,0xF8,0x80,0x90};
+   3          //为0、1、2、3、4、5、6、7、8、9
+   4          unsigned char code SMG_Dot[10]   =      {0x40,0x79,0x24,0x30,0x19,0x12,0x02,0x78,0x00,0x10};
+   5          //为0. 1. 2. 3. 4. 5. 6. 7. 8. 9.
+   6          void Delay20us()                //@12.000MHz
+   7          {
+   8   1              unsigned char i;
+   9   1              i = 57;
+  10   1              while (--i);
+  11   1      }
+  12          void Delay_SMG(unsigned int a)          //@12.000MHz
+  13          {
+  14   1              while(a--);
+  15   1      }
+  16          void HC573Init(unsigned char num1,num2)
+  17          {
+  18   1              P2 = (P2&0x1f)|0x00;
+  19   1              P0 = num2;
+  20   1              switch(num1)
+  21   1              {
+  22   2                      case 0: P2 = (P2&0x1f)|0x00;    break;//初始化
+  23   2                      case 4: P2 = (P2&0x1f)|0x80;    break;//LED
+  24   2                      case 5: P2 = (P2&0x1f)|0xA0;    break;//蜂鸣器、继电器
+  25   2                      case 6: P2 = (P2&0x1f)|0xC0;    break;//位选
+  26   2                      case 7: P2 = (P2&0x1f)|0xE0;    break;//段选
+  27   2              }       
+  28   1              P2 = (P2&0x1f)|0x00;
+  29   1      }
+  30          void SMG_Show(unsigned char pose,Data)
+  31          {
+  32   1              HC573Init(6,(0x01<<(pose-1)));
+  33   1              HC573Init(7,Data);
+  34   1              Delay_SMG(500);
+  35   1              HC573Init(6,(0x01<<(pose-1)));
+  36   1              HC573Init(7,0xFF);
+  37   1      }
+  38          void Timer0Init(void)           //@12.000MHz
+  39          {
+  40   1              AUXR &= 0x7F;           //定时器时钟12T模式
+  41   1              TMOD = 0x16;            //设置定时器模式
+  42   1              TL0 = 0xFF;             //设置定时初值
+  43   1              TH0 = 0xFF;             //设置定时初值
+  44   1              TL1 = (65535-50000)%256;        //设置定时初值
+  45   1              TH1 = (65535-50000)/256;                //设置定时初值
+  46   1              EA  = 1;
+  47   1              ET0 = 1;
+  48   1              ET1 = 1;
+  49   1              TF0 = 0;                //清除TF0标志
+  50   1              TR0 = 1;                //定时器0开始计时
+  51   1              TR1 = 1;
+  52   1      }
+
+
+C51 COMPILER V9.54   NIXIEINIT                                                             03/22/2024 21:56:26 PAGE 2   
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    200    ----
+   CONSTANT SIZE    =     20    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

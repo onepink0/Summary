@@ -1,0 +1,434 @@
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil51\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main.
+                    -lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15F2K60S2.H>
+   2          #include "iic.h"
+   3          #include "ds1302.h"
+   4          #include "onewire.h"
+   5          #include "NixieInit.h"
+   6          //=========================================
+   7          sbit C1=P3^2;
+   8          sbit C2=P3^3;
+   9          sbit R1=P4^2;
+  10          sbit R2=P4^4;
+  11          void SMG_Dynamic();
+  12          void Key_Run();
+  13          unsigned char Write_Addr[7] = {0x80,0x82,0x84,0x86,0x88,0x8A,0x8C};
+  14          unsigned char Read_Addr[7]  = {0x81,0x83,0x85,0x87,0x89,0x8B,0x8D};
+  15          unsigned char Time[7] = {0x40,0x15,0x05,0x22,0x03,0x05,0x24};
+  16                  //秒分时 日月周 年
+  17          //----------------------------------
+  18          unsigned char Mode=1,ModePro=1,ModeStock;
+  19          unsigned char ADdata0,ADdata1;//光敏的值
+  20          unsigned int Freq;//温度，频率
+  21          unsigned int Temp0,Temp,TempMax,TempSum,Tempcnt,TempAe;//温度、温度最大值、 、 、温度平均值
+  22          unsigned char Tempara=30;//温度参数
+  23          unsigned char Check_flag,sidu_flag,s2_flag,led4_flag;           //测试、湿度、2秒标志位
+  24          unsigned int sidu0,sidu,siduMax,sidusum,siducnt,siduAe;
+  25          unsigned char hour,min,led_state=0xFF;
+  26          unsigned char time_800ms,time_2s,time_3s,time_100ms;            //亮暗状态变化
+  27          unsigned char flag_800ms,flag_2s,flag_3s,flag_100ms;
+  28          unsigned char youxiao;
+  29          unsigned int cnt0,cnt1;                 //定时器0和1
+  30          unsigned char one,two,three;
+  31          //========================================
+  32          void DS1302_Init()
+  33          {
+  34   1              unsigned char i;
+  35   1              Write_Ds1302_Byte(0x8E,0x00);
+  36   1              for(i=0; i<7; i++)
+  37   1              {
+  38   2                      Write_Ds1302_Byte(Write_Addr[i],Time[i]);
+  39   2              }
+  40   1              Write_Ds1302_Byte(0x8E,0x80);
+  41   1      }
+  42          void DS1302_Read()
+  43          {
+  44   1              Time[0] = Read_Ds1302_Byte(0x81);//秒 分 时
+  45   1              Time[1] = Read_Ds1302_Byte(0x83);
+  46   1              Time[2] = Read_Ds1302_Byte(0x85);
+  47   1              if(Check_flag)
+  48   1              {
+  49   2                      min  = Read_Ds1302_Byte(0x83);
+  50   2                      hour = Read_Ds1302_Byte(0x85);
+  51   2                      Check_flag=0;
+  52   2              }
+  53   1      }
+  54          void DS18B20_Read()
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 2   
+
+  55          {
+  56   1              if(Check_flag)
+  57   1              {
+  58   2                      unsigned char LSB,MSB;
+  59   2                      Init_DS18B20();
+  60   2                      Write_DS18B20(0xCC);
+  61   2                      Write_DS18B20(0x44);
+  62   2                      SMG_Dynamic();
+  63   2                      Init_DS18B20();
+  64   2                      SMG_Dynamic();
+  65   2                      Write_DS18B20(0xCC);
+  66   2                      Write_DS18B20(0xBE);
+  67   2                      LSB = Read_DS18B20();
+  68   2                      MSB = Read_DS18B20();
+  69   2                      Temp = (MSB<<8)|LSB;
+  70   2                      if(two)         Temp0 = Temp;
+  71   2                      Temp = (Temp>>4)*100+(LSB&0x0F)*6.25;//两位小数，共四位
+  72   2                      two=1;
+  73   2                      if(TempMax<Temp)        TempMax = Temp;//温度最大值
+  74   2                      if(youxiao) 
+  75   2                      {
+  76   3                              TempSum+=Temp;
+  77   3                              Tempcnt++;
+  78   3                              youxiao=0;
+  79   3                      }
+  80   2                      TempAe = TempSum/siducnt;//温度平均值
+  81   2              }
+  82   1      }
+  83          void Get_Sidu()
+  84          {
+  85   1              if(Check_flag)
+  86   1              {
+  87   2                      if(Freq>=200 && Freq<=2000)
+  88   2                      {
+  89   3                              youxiao=1;
+  90   3                              if(three)       sidu0=sidu;
+  91   3                              sidu=(Freq*2+50)*10/45;
+  92   3                              three=1;
+  93   3                              siducnt++;
+  94   3                              sidusum+=sidu;
+  95   3                              if(siduMax<sidu)        siduMax=sidu;
+  96   3                              siduAe = sidusum/siducnt;
+  97   3                              sidu_flag=0;
+  98   3                      }else{
+  99   3                      sidu_flag=1;
+ 100   3                      }
+ 101   2              }
+ 102   1      }
+ 103          void Light_Anchange()
+ 104          {
+ 105   1              if(flag_3s==0)
+ 106   1              {
+ 107   2                      if(one)         ADdata0 = ADdata1;
+ 108   2                      ADdata1 = PCF8591_ADchange(0x01);
+ 109   2                      one=1;
+ 110   2                      flag_800ms=0;
+ 111   2                      if(ADdata1<140 && ADdata0 >190)
+ 112   2                      {
+ 113   3                              Check_flag=1;
+ 114   3                              flag_3s=1;
+ 115   3                              ModeStock = Mode;
+ 116   3                              Mode=4;
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 3   
+
+ 117   3                      }
+ 118   2              }
+ 119   1      }
+ 120          void Clean()
+ 121          {
+ 122   1              TempMax=0;
+ 123   1              TempSum=0;
+ 124   1              Temp=0;
+ 125   1              TempAe=0;
+ 126   1              siduMax=0;
+ 127   1              sidu=0;
+ 128   1              sidusum=0;
+ 129   1              siducnt=0;
+ 130   1              siduAe=0;
+ 131   1              min=0;
+ 132   1              hour=0;
+ 133   1      }
+ 134          void LED_Run()
+ 135          {
+ 136   1              if(Mode==1)     {led_state&=0xFE;}else{led_state|=~0xFE;}
+ 137   1              if(Mode==2)     {led_state&=0xFD;}else{led_state|=~0xFD;}
+ 138   1              if(Mode==4)     {led_state&=0xFB;}else{led_state|=~0xFB;}
+ 139   1              if(Temp>Tempara*100)
+ 140   1              {
+ 141   2                      flag_100ms=1;
+ 142   2              }else{
+ 143   2                      flag_100ms=0;
+ 144   2                      time_100ms=0;
+ 145   2              }
+ 146   1              if(led4_flag)
+ 147   1              {
+ 148   2                      if((led_state&0x08)==0x00)
+ 149   2                      {
+ 150   3                              led_state|=0x08;
+ 151   3                      }else if(led_state&0x08==0x08)
+ 152   2                      {
+ 153   3                              led_state&=~0x08;
+ 154   3                      }
+ 155   2                      led4_flag=0;
+ 156   2              }
+ 157   1              if(sidu_flag)   {led_state&=0xEF;}else{led_state|=~0xEF;}
+ 158   1              if(Tempcnt>2 && Temp0<Temp && sidu0<sidu)
+ 159   1              {
+ 160   2                      led_state&=0xDF;
+ 161   2              }else{
+ 162   2                      led_state|=~0xDF;
+ 163   2              }
+ 164   1              HC573Init(4,led_state);
+ 165   1      }
+ 166          void System_Init()
+ 167          {
+ 168   1              HC573Init(4,led_state);
+ 169   1              HC573Init(5,0x00);
+ 170   1              DS1302_Init();
+ 171   1              DS18B20_Init();
+ 172   1              Timer0Init();
+ 173   1              
+ 174   1      }
+ 175          void main()
+ 176          {
+ 177   1              System_Init();
+ 178   1              while(1)
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 4   
+
+ 179   1              {
+ 180   2                      if(flag_800ms)  Light_Anchange();
+ 181   2                      Get_Sidu();
+ 182   2                      DS18B20_Read();
+ 183   2                      DS1302_Read();
+ 184   2                      LED_Run();
+ 185   2                      if(Mode!=4)             Key_Run();
+ 186   2                      SMG_Dynamic();
+ 187   2              }
+ 188   1      }
+ 189          void SMG_Dynamic()
+ 190          {
+ 191   1              if(Mode==1)//时钟界面
+ 192   1              {
+ 193   2                      SMG_Show(1,SMG_NoDot[Time[2]/16]);
+ 194   2                      SMG_Show(2,SMG_NoDot[Time[2]%16]);
+ 195   2                      SMG_Show(3,0xBF);
+ 196   2                      SMG_Show(4,SMG_NoDot[Time[1]/16]);
+ 197   2                      SMG_Show(5,SMG_NoDot[Time[1]%16]);
+ 198   2                      SMG_Show(6,0xBF);
+ 199   2                      SMG_Show(7,SMG_NoDot[Time[0]/16]);
+ 200   2                      SMG_Show(8,SMG_NoDot[Time[0]%16]);
+ 201   2              }
+ 202   1              if(Mode==2)//回显界面
+ 203   1              {
+ 204   2                      if(ModePro==1)//温度回显
+ 205   2                      {
+ 206   3                              SMG_Show(1,0xC6);       
+ 207   3                              if(Tempcnt!=0)
+ 208   3                              {
+ 209   4                                      SMG_Show(3,SMG_NoDot[TempMax/1000]);
+ 210   4                                      SMG_Show(4,SMG_NoDot[TempMax/100%10]);
+ 211   4                                      SMG_Show(5,0xBF);
+ 212   4                                      SMG_Show(6,SMG_NoDot[TempAe/1000]);
+ 213   4                                      SMG_Show(7,SMG_Dot[TempAe/100%10]);
+ 214   4                                      SMG_Show(8,SMG_NoDot[TempAe/10%10]);
+ 215   4                              }else{
+ 216   4                                      SMG_Show(3,0xFF);
+ 217   4                                      SMG_Show(4,0xFF);
+ 218   4                                      SMG_Show(5,0xFF);
+ 219   4                                      SMG_Show(6,0xFF);
+ 220   4                                      SMG_Show(7,0xFF);
+ 221   4                                      SMG_Show(8,0xFF);
+ 222   4                              }
+ 223   3                      }
+ 224   2                      if(ModePro==2)//湿度回显
+ 225   2                      {
+ 226   3                              SMG_Show(1,0x89);
+ 227   3                              if(Tempcnt!=0)
+ 228   3                              {
+ 229   4                                      SMG_Show(3,SMG_NoDot[siduMax/100]);
+ 230   4                                      SMG_Show(4,SMG_NoDot[siduMax/10%10]);
+ 231   4                                      SMG_Show(5,0xBF);
+ 232   4                                      SMG_Show(6,SMG_NoDot[siduAe/100]);
+ 233   4                                      SMG_Show(7,SMG_Dot[siduAe/10%10]);
+ 234   4                                      SMG_Show(8,SMG_NoDot[siduAe%10]);
+ 235   4                              }else{
+ 236   4                                      SMG_Show(3,0xFF);
+ 237   4                                      SMG_Show(4,0xFF);
+ 238   4                                      SMG_Show(5,0xFF);
+ 239   4                                      SMG_Show(6,0xFF);
+ 240   4                                      SMG_Show(7,0xFF);
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 5   
+
+ 241   4                                      SMG_Show(8,0xFF);
+ 242   4                              }
+ 243   3                      }
+ 244   2                      if(ModePro==3)//时间回显
+ 245   2                      {
+ 246   3                              SMG_Show(1,0x8E);               
+ 247   3                              SMG_Show(2,SMG_NoDot[Tempcnt/10]);
+ 248   3                              SMG_Show(3,SMG_NoDot[Tempcnt%10]);
+ 249   3                              if(Tempcnt!=0)
+ 250   3                              {
+ 251   4                                      SMG_Show(4,SMG_NoDot[hour/16]);
+ 252   4                                      SMG_Show(5,SMG_NoDot[hour%16]);
+ 253   4                                      SMG_Show(6,0xBF);
+ 254   4                                      SMG_Show(7,SMG_NoDot[min/16]);
+ 255   4                                      SMG_Show(8,SMG_NoDot[min%16]);
+ 256   4                              }else{
+ 257   4                                      SMG_Show(4,0xFF);
+ 258   4                                      SMG_Show(5,0xFF);
+ 259   4                                      SMG_Show(6,0xFF);
+ 260   4                                      SMG_Show(7,0xFF);
+ 261   4                                      SMG_Show(8,0xFF);
+ 262   4                              }
+ 263   3                      }
+ 264   2              }
+ 265   1              if(Mode==3)//参数界面
+ 266   1              {
+ 267   2                      SMG_Show(1,0x8C);
+ 268   2                      SMG_Show(7,SMG_NoDot[Tempara/10]);
+ 269   2                      SMG_Show(8,SMG_NoDot[Tempara%10]);
+ 270   2                      SMG_Show(2,0xFF);
+ 271   2                      SMG_Show(3,0xFF);
+ 272   2                      SMG_Show(4,0xFF);
+ 273   2                      SMG_Show(5,0xFF);
+ 274   2                      SMG_Show(6,0xFF);
+ 275   2              }
+ 276   1              if(Mode==4)//温湿度界面
+ 277   1              {
+ 278   2                      SMG_Show(1,0x86);
+ 279   2                      SMG_Show(2,0xFF);
+ 280   2                      SMG_Show(3,0xFF);
+ 281   2                      SMG_Show(4,SMG_NoDot[Temp/1000]);
+ 282   2                      SMG_Show(5,SMG_NoDot[Temp/100%10]);
+ 283   2                      SMG_Show(6,0xBF);
+ 284   2                      if(sidu_flag)
+ 285   2                      {
+ 286   3                              SMG_Show(7,0x88);
+ 287   3                              SMG_Show(8,0x88);
+ 288   3                      }else{
+ 289   3                              SMG_Show(7,SMG_NoDot[sidu/100]);
+ 290   3                              SMG_Show(8,SMG_NoDot[sidu/10%10]);
+ 291   3                      }
+ 292   2              }
+ 293   1      }
+ 294          void Key_Run()
+ 295          {
+ 296   1              C1=C2=R1=R2=1;
+ 297   1              C1=0;
+ 298   1              if(R1==0)               //S9
+ 299   1              {
+ 300   2                      Delay20us();
+ 301   2                      if(R1==0)
+ 302   2                      {
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 6   
+
+ 303   3                              if(Mode==2 && ModePro==3)
+ 304   3                              {
+ 305   4                                      flag_2s=1;
+ 306   4                                      time_2s=0;
+ 307   4                              }
+ 308   3                              while(R1==0)            SMG_Dynamic();
+ 309   3                              if(flag_2s==1 && s2_flag==1)
+ 310   3                              {
+ 311   4                                      flag_2s=0;
+ 312   4                                      Clean();
+ 313   4                              }
+ 314   3                              if(Mode==3)
+ 315   3                              {
+ 316   4                                      if(Tempara>0)   Tempara--;
+ 317   4                              }
+ 318   3                      }
+ 319   2              }
+ 320   1              if(R2==0)               //S5
+ 321   1              {
+ 322   2                      Delay20us();
+ 323   2                      if(R2==0)
+ 324   2                      {
+ 325   3                              while(R2==0)            SMG_Dynamic();
+ 326   3                              if(Mode==2)
+ 327   3                              {
+ 328   4                                      ModePro++;
+ 329   4                                      if(ModePro==4)  ModePro=1;
+ 330   4                              }
+ 331   3                      }
+ 332   2              }
+ 333   1              //====================
+ 334   1              C1=1;C2=0;
+ 335   1              if(R1==0)               //S8
+ 336   1              {
+ 337   2                      Delay20us();
+ 338   2                      if(R1==0)
+ 339   2                      {
+ 340   3                              while(R1==0)            SMG_Dynamic();
+ 341   3                              if(Mode==3)
+ 342   3                              {
+ 343   4                                      Tempara++;
+ 344   4                                      if(Tempara==100)                Tempara=99;
+ 345   4                              }
+ 346   3                      }
+ 347   2              }
+ 348   1              if(R2==0)               //S4
+ 349   1              {
+ 350   2                      Delay20us();
+ 351   2                      if(R2==0)
+ 352   2                      {
+ 353   3                              while(R2==0)            SMG_Dynamic();
+ 354   3                              Mode++;
+ 355   3                              if(Mode==4)             Mode=1;
+ 356   3                              if(Mode==2)             ModePro=1;
+ 357   3                      }
+ 358   2              }
+ 359   1      }
+ 360          void Timer0_Routine() interrupt 1
+ 361          {
+ 362   1              cnt0++;
+ 363   1      }
+ 364          void Timer1_Routine() interrupt 3
+C51 COMPILER V9.54   MAIN                                                                  04/10/2024 19:14:50 PAGE 7   
+
+ 365          {
+ 366   1              cnt1++;
+ 367   1              time_800ms++;
+ 368   1              if(flag_2s)             time_2s++;
+ 369   1              if(flag_3s)             time_3s++;
+ 370   1              if(flag_100ms)  time_100ms++;
+ 371   1              if(cnt1 == 20)
+ 372   1              {
+ 373   2                      Freq = cnt0;
+ 374   2                      cnt0 = 0;
+ 375   2                      cnt1 = 0;
+ 376   2              }
+ 377   1              if(time_800ms==4)
+ 378   1              {
+ 379   2                      time_800ms=0;
+ 380   2                      flag_800ms=1;
+ 381   2              }
+ 382   1              if(time_2s==40)
+ 383   1              {
+ 384   2                      time_2s=0;
+ 385   2                      s2_flag=1;
+ 386   2              }
+ 387   1              if(time_3s==60)
+ 388   1              {
+ 389   2                      time_3s=0;
+ 390   2                      flag_3s=0;
+ 391   2                      Mode = ModeStock;
+ 392   2              }
+ 393   1              if(time_100ms==2)
+ 394   1              {
+ 395   2                      time_100ms=0;
+ 396   2                      led4_flag=1;
+ 397   2              }
+ 398   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2174    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     76       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
