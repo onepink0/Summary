@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "STM32G431RBT6",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "USE_HAL_DRIVER",
+                "STM32G431xx"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "gcc-arm",
+            "compilerPath": "E:/VScode/Path/toolchain/bin/arm-none-eabi-gcc.exe"
+        }
+    ],
+    "version": 4
+}

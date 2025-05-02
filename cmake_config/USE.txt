@@ -1,0 +1,8 @@
+1.复制粘贴到对应工程路径下(不包含该txt)
+2.修改 .vscode 文件夹下 c_cpp_properties 的对应 型号
+3.若需要调试 修改 launch.json 文件对应路径和烧录配置
+4.修改 flash.cfg 的路径
+
+
+Tip：
+settings.json不需要修改
